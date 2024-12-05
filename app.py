@@ -50,6 +50,11 @@ for i in range(10):
 
 inputs_tensor = torch.tensor([inputs])
 
+# Ввод текста
+st.header("Текстовый ввод")
+text_input = st.text_input("Введите текстовую информацию:")
+st.write(f"Вы ввели: {text_input}")
+
 # Предсказания модели
 if st.button("Выполнить предсказание"):
     if model:
