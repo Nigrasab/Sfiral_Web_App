@@ -1,57 +1,76 @@
-import os
-import requests
-import torch
 import streamlit as st
-from fsin_model import SIRALFractalNeuralNetwork
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from io import BytesIO
+import torch
+from fsin_model import SIRALFractalNeuralNetwork  # Убедитесь, что модель доступна в той же папке
 
-# Загрузка модели из GitHub
-MODEL_URL = "https://github.com/Nigrasab/Sfiral_Web_App/raw/main/fsin_model.pth"
-MODEL_PATH = "fsin_model.pth"
-
-def download_model():
-    if not os.path.exists(MODEL_PATH):
-        st.info("Downloading model...")
-        response = requests.get(MODEL_URL, stream=True)
-        with open(MODEL_PATH, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        st.success("Model downloaded successfully!")
+# Функция для построения графика
+def plot_predictions(predictions):
+    fig, ax = plt.subplots()
+    ax.plot(range(len(predictions)), predictions, marker='o', linestyle='-')
+    ax.set_title("Предсказания модели")
+    ax.set_xlabel("Номер примера")
+    ax.set_ylabel("Значение")
+    return fig
 
 # Загрузка модели
 def load_model():
-    model = SIRALFractalNeuralNetwork(input_size=10, hidden_size=32, output_size=1)
-    try:
-        model.load_state_dict(torch.load(MODEL_PATH))
-        model.eval()
-        st.success("Model loaded successfully!")
-        return model
-    except FileNotFoundError:
-        st.error("Model file not found. Please check the download process.")
-        return None
+    input_size = 10
+    hidden_size = 32
+    output_size = 1
 
-# Отображение интерфейса
-def main():
-    st.title("Sfiral Model Interface")
-    st.write("Input your data and see predictions.")
+    model = SIRALFractalNeuralNetwork(input_size, hidden_size, output_size)
+    model_path = "fsin_model.pth"  # Убедитесь, что этот файл находится в репозитории
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    return model
 
-    # Загрузка модели
-    download_model()
+# Интерфейс Streamlit
+st.title("Сфираль (SFIRAL): Фрактальная Сфиральная Нейронная Сеть")
+st.write("Интерфейс взаимодействия с моделью на русском языке.")
+
+# Раздел загрузки модели
+st.header("Загрузка обученной модели")
+try:
     model = load_model()
-    if model is None:
-        return
+    st.success("Модель успешно загружена!")
+except Exception as e:
+    st.error(f"Ошибка загрузки модели: {str(e)}")
 
-    # Таблица ввода данных
-    st.subheader("Input Data")
-    data = []
-    for i in range(10):
-        data.append(st.number_input(f"Input feature {i + 1}", min_value=0.0, max_value=10.0, value=0.0))
+# Ввод данных
+st.header("Ввод данных")
+st.write("Введите числовые значения для параметров.")
 
-    # Кнопка предсказания
-    if st.button("Predict"):
-        input_tensor = torch.tensor([data], dtype=torch.float32)
-        with torch.no_grad():
-            prediction = model(input_tensor)
-        st.success(f"Prediction: {prediction.item():.4f}")
+inputs = []
+for i in range(10):
+    value = st.number_input(f"Введите значение для параметра {i + 1}:", min_value=0.0, max_value=10.0, value=0.5, step=0.1)
+    inputs.append(value)
 
-if __name__ == "__main__":
-    main()
+inputs_tensor = torch.tensor([inputs])
+
+# Предсказания модели
+if st.button("Выполнить предсказание"):
+    if model:
+        predictions = model(inputs_tensor).detach().numpy().flatten()
+        st.success("Предсказания выполнены успешно!")
+        st.write("Предсказания модели:", predictions)
+
+        # Построение графика
+        st.subheader("График предсказаний")
+        fig = plot_predictions(predictions)
+        st.pyplot(fig)
+
+        # Сохранение предсказаний
+        st.subheader("Выгрузка предсказаний")
+        df = pd.DataFrame({"Predictions": predictions})
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="Скачать результаты в формате CSV",
+            data=csv,
+            file_name="predictions.csv",
+            mime="text/csv",
+        )
+    else:
+        st.error("Модель не загружена. Пожалуйста, загрузите модель и попробуйте снова.")
