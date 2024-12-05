@@ -1,68 +1,80 @@
+import os
 import streamlit as st
 import torch
-from fsin_model import SIRALFractalNeuralNetwork
+from torch import nn
 import requests
-import io
-import pandas as pd
-import matplotlib.pyplot as plt
 
-# Функция загрузки модели из репозитория
-@st.cache_resource
-def load_model_from_repo(repo_url):
-    try:
-        response = requests.get(repo_url)
-        response.raise_for_status()  # Проверка успешности запроса
-        model_state = torch.load(io.BytesIO(response.content))
-        model = SIRALFractalNeuralNetwork(input_size=10, hidden_size=32, output_size=1)
-        model.load_state_dict(model_state)
-        model.eval()
-        return model
-    except Exception as e:
-        st.error(f"Failed to load the model from repository: {e}")
-        return None
-
-# Основной код приложения
-def main():
-    st.title("SIRAL Model Interface")
-
-    # Укажите URL репозитория для загрузки модели
-    repo_url = st.text_input("Enter Model Repository URL:", 
-                             "https://example.com/path/to/fsin_model.pth")
-
-    if st.button("Load Model"):
-        model = load_model_from_repo(repo_url)
-        if model:
-            st.success("Model successfully loaded!")
-        else:
-            st.error("Model could not be loaded.")
-
-    # Проверка, если модель загружена
-    if 'model' in locals() and model:
-        # Опции для пользовательских данных
-        st.subheader("Generate Predictions")
-        user_input = st.text_area(
-            "Enter your data as comma-separated values (10 values per row):",
-            "0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0"
+# Определение модели
+class SIRALFractalNeuralNetwork(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(SIRALFractalNeuralNetwork, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2)
         )
+        self.layer2 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2)
+        )
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2)
+        )
+        self.output = nn.Linear(hidden_size, output_size)
 
-        # Преобразование пользовательских данных
-        try:
-            data = [list(map(float, row.split(','))) for row in user_input.split('\n') if row]
-            input_tensor = torch.tensor(data)
-            if input_tensor.shape[1] != 10:
-                raise ValueError("Each row must have exactly 10 values.")
-        except Exception as e:
-            st.error(f"Invalid input data: {e}")
-            return
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        return self.output(x)
 
-        # Генерация предсказаний
-        predictions = model(input_tensor)
-        st.write("Predictions:", predictions.detach().numpy())
+# Загрузка модели из репозитория
+def download_model(repo_url, model_filename):
+    local_filename = model_filename
+    if not os.path.exists(local_filename):
+        st.info("Загрузка модели из репозитория...")
+        response = requests.get(f"{repo_url}/raw/main/{model_filename}", stream=True)
+        with open(local_filename, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        st.success("Модель успешно загружена!")
+    return local_filename
 
-        # Визуализация предсказаний
-        st.subheader("Prediction Graph")
-        df = pd.DataFrame(predictions.detach().numpy(), columns=["Prediction"])
-        st.line_chart(df)
+# Основной интерфейс приложения
+def main():
+    st.title("Сфираль (SFIRAL): Фрактальная Сфиральная Нейронная Сеть")
+    st.markdown("Интерфейс взаимодействия с моделью на русском языке.")
+
+    # Параметры модели
+    input_size = 10
+    hidden_size = 32
+    output_size = 1
+
+    # Загрузка модели
+    repo_url = "https://github.com/Nigrasab/Sfiral_Web_App"
+    model_filename = "fsin_model.pth"
+    model_path = download_model(repo_url, model_filename)
+
+    # Загрузка модели в память
+    model = SIRALFractalNeuralNetwork(input_size, hidden_size, output_size)
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    model.eval()
+
+    # Ввод данных пользователем
+    st.header("Ввод данных")
+    user_input = []
+    for i in range(input_size):
+        value = st.number_input(f"Введите значение для параметра {i + 1}:", min_value=0.0, max_value=1.0, value=0.5, step=0.1)
+        user_input.append(value)
+
+    # Прогнозирование
+    if st.button("Запустить модель"):
+        input_tensor = torch.tensor([user_input])
+        prediction = model(input_tensor).item()
+        st.success(f"Результат предсказания: {prediction:.4f}")
 
 # Запуск приложения
 if __name__ == "__main__":
